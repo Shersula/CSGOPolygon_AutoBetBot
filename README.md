@@ -1,5 +1,6 @@
 # CSGOPolygon_AutoBetBot
 To work properly, change the code for your browser
+
 Yadnex:
 
 ![image](https://user-images.githubusercontent.com/75137275/153713779-66824ab9-1659-483c-9a69-50cae25270c1.png)
