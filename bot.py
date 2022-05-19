@@ -13,6 +13,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import datetime
 import re
+from enum import Enum
+
+class Status(Enum):
+	WaitRoll = 1
+	Rolled = 2
+	NumberRoll = 3
 
 class Window(QMainWindow):
 	def __init__(self):
@@ -23,7 +29,7 @@ class Window(QMainWindow):
 		self.Red = 0
 		self.Green = 0
 
-		self.checkbox_num = [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+		self.checkbox_num = [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
 		super().__init__()
 		self.setObjectName("Window")
 		self.resize(699, 459)
@@ -128,6 +134,12 @@ class Window(QMainWindow):
 		self.checkbox_num[14] = QtWidgets.QCheckBox("14", self)
 		self.checkbox_num[14].setToolTip('<b>Числа на которые должен ставить бот</b>')
 
+		self.checkbox_num[15] = QtWidgets.QCheckBox("All Red", self)
+		self.checkbox_num[15].setToolTip('<b>Числа на которые должен ставить бот</b>')
+
+		self.checkbox_num[16] = QtWidgets.QCheckBox("All Black", self)
+		self.checkbox_num[16].setToolTip('<b>Числа на которые должен ставить бот</b>')
+
 		self.horizontalLayout_11.addWidget(self.checkbox_num[0])
 		self.horizontalLayout_11.addWidget(self.checkbox_num[1])
 		self.horizontalLayout_11.addWidget(self.checkbox_num[2])
@@ -136,13 +148,15 @@ class Window(QMainWindow):
 		self.horizontalLayout_11.addWidget(self.checkbox_num[5])
 		self.horizontalLayout_11.addWidget(self.checkbox_num[6])
 		self.horizontalLayout_11.addWidget(self.checkbox_num[7])
-		self.horizontalLayout_12.addWidget(self.checkbox_num[8])
+		self.horizontalLayout_11.addWidget(self.checkbox_num[8])
 		self.horizontalLayout_12.addWidget(self.checkbox_num[9])
 		self.horizontalLayout_12.addWidget(self.checkbox_num[10])
 		self.horizontalLayout_12.addWidget(self.checkbox_num[11])
 		self.horizontalLayout_12.addWidget(self.checkbox_num[12])
 		self.horizontalLayout_12.addWidget(self.checkbox_num[13])
 		self.horizontalLayout_12.addWidget(self.checkbox_num[14])
+		self.horizontalLayout_12.addWidget(self.checkbox_num[15])
+		self.horizontalLayout_12.addWidget(self.checkbox_num[16])
 
 		for i in range(len(self.checkbox_num)):
 			if self.checkbox_num[i] != None: self.checkbox_num[i].setVisible(False)
@@ -252,7 +266,7 @@ class Window(QMainWindow):
 		self.pushButton.setText("Рассчитать")
 		self.label_3.setText("")
 		self.label_4.setText("")
-		self.label_5.setText("Число выпадений\nЧерное: 0 || Красное: 0")
+		self.label_5.setText("Число выпадений\nЧерное: 0 || Красное: 0 || Зеленое: 0")
 
 		self.spinBox.setRange(1, 10000)
 		self.spinBox_2.setRange(1, 15)
@@ -276,11 +290,14 @@ class Window(QMainWindow):
 		if index == 3:
 			for i in range(len(self.checkbox_num)):
 				if self.checkbox_num[i] != None: self.checkbox_num[i].setVisible(True)
+			self.checkbox.setCheckState(0)
+			self.checkbox.setEnabled(False)
 		else:
 			for i in range(len(self.checkbox_num)):
 				if self.checkbox_num[i] != None:
 					self.checkbox_num[i].setCheckState(0)
 					self.checkbox_num[i].setVisible(False)
+			self.checkbox.setEnabled(True)
 
 	def ClearBet(self):
 		if self.BetObj.StopBtn == True:
@@ -336,12 +353,15 @@ class Window(QMainWindow):
 		self.Red = 0
 		self.Green = 0
 
-	def UpdateInformation(self):
+	def UpdateInformation(self, driver):
 		StrStartTime = self.StartTime.strftime('%d.%m.%Y %H:%M:%S')
 		WorkTime = datetime.datetime.now()-self.StartTime
 		WorkTime -= datetime.timedelta(microseconds=WorkTime.microseconds)
 		InfoString = "Информация:\n" + "Время запуска " + StrStartTime + "\nВремя в работе " + str(WorkTime) + "\nНаибольший лузстрик: " + str(self.BigLoseStreak)
 		self.label_4.setText(InfoString)
+
+		element = driver.find_element(By.XPATH, '//b[@id="balance_r"]').text
+		window.label_3.setText(string + "\nБаланс: " + element + "\nЗаработано за пероид работы бота: " + str(window.Coins))
 
 	def UpdateStatistic(self):
 		StatString = "Число выпадений\nЧерное: " + str(self.Black) + " || Красное: " + str(self.Red) + " || Зеленое: " + str(self.Green)
@@ -356,6 +376,12 @@ class Bet(QObject):
 		super(Bet, self).__init__()
 		#From Yandex Browser
 		self.options = webdriver.ChromeOptions()
+
+		self.options.add_experimental_option("excludeSwitches", ["enable-automation"])
+		self.options.add_experimental_option('useAutomationExtension', False)
+
+		#self.options.add_argument("--disable-blink-features=AutomationControlled")
+
 		self.path = Service('yandexdriver.exe')
 
 		#From Chrome Browser
@@ -383,11 +409,12 @@ class Bet(QObject):
 		self.StopBtn = False
 		self.Bet = False
 		self.LastBet = 0
-		self.LastBetSet = False
 		self.LooseCount = 0
-		self.WaitColor = False
+		self.BalanceBeforeBet = 0
+		self.BalanceAfterBet = 0
+		self.BetCount = 0
 
-		self.NumberQueue = []
+		self.Queue = []
 		self.QueueBuild = False
 
 		self.WaitRolling = False
@@ -422,6 +449,7 @@ class Bet(QObject):
 		"""
 
 		self.driver.get('https://plg.bet')
+
 		self.handle = self.driver.current_window_handle
 
 		if self.LoopTimer != None:
@@ -430,8 +458,94 @@ class Bet(QObject):
 		self.LoopTimer = QTimer()
 		self.LoopTimer.timeout.connect(self.Loop)
 
-		self.LoopTimer.start(1000)
+		self.LoopTimer.start(800)
 	
+	def GetRoulleteStatus(self):
+		element = self.driver.find_element(By.XPATH, "//*[@id='select_roulette']/div[1]/div[1]/span")
+		if(element.text.find("Вращение через") != -1 or element.text.find("Rolling in") != -1): return Status.WaitRoll
+		elif(element.text == "***ROLLING***" or element.text == "***ВРАЩЕНИЕ***"): return Status.Rolled
+		else: return Status.NumberRoll
+
+
+	def BuildQueue(self):
+		if(self.QueueBuild == True): return None
+
+		if window.comboBox.currentIndex() == 0: self.Queue.append("All Black")
+		if window.comboBox.currentIndex() == 1: self.Queue.append("All Red")
+		if window.comboBox.currentIndex() == 2: self.Queue.append("All Green")
+		if window.comboBox.currentIndex() == 3:
+			for i in range(len(window.checkbox_num)):
+				if window.checkbox_num[i].isChecked(): self.Queue.append(window.checkbox_num[i].text())
+		self.QueueBuild = True
+
+
+	def SetBet(self):
+		if(self.BalanceBeforeBet != 0):
+			self.BalanceAfterBet = int(self.driver.find_element(By.XPATH, '//b[@id="balance_r"]').text)
+			if(self.BalanceBeforeBet > self.BalanceAfterBet): self.Queue.remove(self.Queue[0])
+			self.BalanceBeforeBet = 0
+
+
+		if len(self.Queue) > 0:
+			self.BalanceBeforeBet = int(self.driver.find_element(By.XPATH, '//b[@id="balance_r"]').text)
+			if(self.Queue[0] == "All Black"):
+				element = self.driver.find_element(By.XPATH, "//input[@type='text'][@id='roulette_amount']")
+				element.clear()
+
+				if self.LastBet == 0:
+					element.send_keys(str(window.spinBox.value()))
+					self.BetCount += window.spinBox.value()
+				else:
+					element.send_keys(str(self.LastBet))
+					self.BetCount += self.LastBet
+
+				element = self.driver.find_element(By.XPATH, "//button[@type='button'][@name='button'][@class='dark_button betButton']")
+				element.click()
+
+			elif(self.Queue[0] == "All Red"):
+				element = self.driver.find_element(By.XPATH, "//input[@type='text'][@id='roulette_amount']")
+				element.clear()
+
+				if self.LastBet == 0:
+					element.send_keys(str(window.spinBox.value()))
+					self.BetCount += window.spinBox.value()
+				else:
+					element.send_keys(str(self.LastBet))
+					self.BetCount += self.LastBet
+
+				element = self.driver.find_element(By.XPATH, "//button[@type='button'][@name='button'][@class='red_button betButton']")
+				element.click()
+
+			elif(self.Queue[0] == "All Green" or self.Queue[0] == "0"):
+				element = self.driver.find_element(By.XPATH, "//input[@type='text'][@id='roulette_amount']")
+				element.clear()
+
+				if self.LastBet == 0:
+					element.send_keys(str(window.spinBox.value()))
+					self.BetCount += window.spinBox.value()
+				else:
+					element.send_keys(str(self.LastBet))
+					self.BetCount += self.LastBet
+
+				element = self.driver.find_element(By.XPATH, "//button[@type='button'][@name='button'][@class='green_button betButton']")
+				element.click()
+
+			else:
+				element = self.driver.find_element(By.XPATH, "//input[@type='text'][@id='roulette_amount']")
+				element.clear()
+
+				if self.LastBet == 0:
+					element.send_keys(str(window.spinBox.value()))
+					self.BetCount += window.spinBox.value()
+				else:
+					element.send_keys(str(self.LastBet))
+					self.BetCount += self.LastBet
+
+				SubStr = "//span[@class='round_bets_item betButton'][@data-lower='"+ self.Queue[0] +"']"
+
+				element = self.driver.find_element(By.XPATH, SubStr)
+				element.click()
+
 	def Loop(self):
 		try:
 			if self.driver.current_window_handle == self.handle: pass
@@ -455,215 +569,45 @@ class Bet(QObject):
 				self.driver = webdriver.Chrome(service=self.path, options=self.options)
 				self.driver.get('https://plg.bet')
 				self.handle = self.driver.current_window_handle
+
 		if self.StopBtn != True:
 			try:
 				element = self.driver.find_element(By.XPATH, '//div[@class="user"]')
-				element = self.driver.find_element(By.XPATH, '//b[@id="balance_r"]').text
 
-				window.label_3.setText(string + "\nБаланс: " + element)
-				window.label_3.setText(string + "\nБаланс: " + element + "\nЗаработано за пероид работы бота: " + str(window.Coins))
-				if window.InfoSet == False: window.SetInformation()
-				window.UpdateInformation()
-
-				if self.WaitColor == True:
+				status = self.GetRoulleteStatus()
+				if(status == Status.WaitRoll):
+					if(self.QueueBuild != True): self.BuildQueue() #Создание очереди на ставки
+					else: self.SetBet() #Выполнение очереди на ставки
+				elif(status == Status.NumberRoll): #Отслеживание выпавшего числа
 					try:
-						element = self.driver.find_element(By.XPATH, "//*[@id='select_roulette']/div[1]/div[1]/span")
-						num = re.sub("[^0-9]", "", element.text)
+						if(self.QueueBuild == True and self.BalanceAfterBet != 0):
+							element = self.driver.find_element(By.XPATH, "//*[@id='select_roulette']/div[1]/div[1]/span")
+							num = re.search("[0-9]+", element.text)
+							if 7 >= int(num.group()) >= 1: window.Red += 1
+							elif 14 >= int(num.group()) >= 8: window.Black += 1
+							elif int(num.group()) == 0: window.Green += 1
+							window.UpdateStatistic()
 
-						if 7 >= int(num) >= 1: window.Red += 1
-						elif 14 >= int(num) >= 8: window.Black += 1
-						elif int(num) == 0: window.Green += 1
-						self.WaitColor = False
-						window.UpdateStatistic()
+							BalanceAfterRoll = int(self.driver.find_element(By.XPATH, '//b[@id="balance_r"]').text)
+							if(BalanceAfterRoll > self.BalanceAfterBet):
+								self.LastBet = 0
+								window.Coins += BalanceAfterRoll - self.BalanceAfterBet - self.BetCount
+								self.BetCount = 0
+								self.LooseCount = 0
+								if window.checkbox.isChecked(): window.AutoSelectColor()
+							else:
+								if self.LastBet == 0: self.LastBet = window.spinBox.value()*2
+								else: self.LastBet *= 2
+								self.LooseCount += 1
+								if window.BigLoseStreak < self.LooseCount: window.BigLoseStreak = self.LooseCount
+							self.QueueBuild = False
+							self.Queue.clear()
+							self.BalanceAfterBet = 0
 					except ValueError: pass
-					#Rolled 3!
 
-				if window.comboBox.currentIndex() == 0: #black
-					if self.Bet == False:
-						element = self.driver.find_element(By.XPATH, "//*[@id='select_roulette']/div[1]/div[1]/span")
-						if element.text != "***ROLLING***" and element.text != "***ВРАЩЕНИЕ***":
-							element = self.driver.find_element(By.XPATH, "//*[@id='black_bets_my']/span")
-							if(element.text == "0"):
-								element = self.driver.find_element(By.XPATH, "//input[@type='text'][@id='roulette_amount']")
-								element.clear()
-								if self.LastBet == 0: element.send_keys(str(window.spinBox.value()))
-								else: element.send_keys(str(self.LastBet))
 
-								element = self.driver.find_element(By.XPATH, "//button[@type='button'][@name='button'][@class='dark_button betButton']")
-								element.click()
-
-								element = self.driver.find_element(By.XPATH, "//*[@id='black_bets_my']/span")
-							else:
-								self.Bet = True
-								if self.LastBet == 0: self.LastBet = window.spinBox.value()
-					else:
-						element = self.driver.find_element(By.XPATH, "//*[@id='black_bets_my']/span")
-						if element.text.find("+") != -1 and self.LastBetSet == False:
-							self.LastBet = 0
-							window.Coins += window.spinBox.value()
-							self.LastBetSet = True
-							self.LooseCount = 0
-							self.WaitColor = True
-							if window.checkbox.isChecked(): window.AutoSelectColor()
-						elif element.text.find("-") != -1 and self.LastBetSet == False:
-							self.LastBet *= 2
-							self.LastBetSet = True
-							self.LooseCount += 1
-							self.WaitColor = True
-							if window.BigLoseStreak < self.LooseCount: window.BigLoseStreak = self.LooseCount
-						elif(element.text == "0"):
-							self.driver.get('https://plg.bet')
-							self.Bet = False
-							self.LastBetSet = False
-
-				elif window.comboBox.currentIndex() == 1: #red
-					if self.Bet == False:
-						element = self.driver.find_element(By.XPATH, "//*[@id='select_roulette']/div[1]/div[1]/span")
-						if element.text != "***ROLLING***" and element.text != "***ВРАЩЕНИЕ***":
-							element = self.driver.find_element(By.XPATH, "//*[@id='red_bets_my']/span")
-							if(element.text == "0"):
-								element = self.driver.find_element(By.XPATH, "//input[@type='text'][@id='roulette_amount']")
-								element.clear()
-								if self.LastBet == 0: element.send_keys(str(window.spinBox.value()))
-								else: element.send_keys(str(self.LastBet))
-
-								element = self.driver.find_element(By.XPATH, "//button[@type='button'][@name='button'][@class='red_button betButton']")
-								element.click()
-
-								element = self.driver.find_element(By.XPATH, "//*[@id='red_bets_my']/span")
-							else:
-								self.Bet = True
-								if self.LastBet == 0: self.LastBet = window.spinBox.value()
-					else:
-						element = self.driver.find_element(By.XPATH, "//*[@id='red_bets_my']/span")
-						if element.text.find("+") != -1 and self.LastBetSet == False:
-							self.LastBet = 0
-							window.Coins += window.spinBox.value()
-							self.LastBetSet = True
-							self.LooseCount = 0
-							self.WaitColor = True
-							if window.checkbox.isChecked(): window.AutoSelectColor()
-						elif element.text.find("-") != -1 and self.LastBetSet == False:
-							self.LastBet *= 2
-							self.LastBetSet = True
-							self.LooseCount += 1
-							self.WaitColor = True
-							if window.BigLoseStreak < self.LooseCount: window.BigLoseStreak = self.LooseCount
-						elif(element.text == "0"):
-							self.driver.get('https://plg.bet')
-							self.Bet = False
-							self.LastBetSet = False
-				elif window.comboBox.currentIndex() == 2: #green
-					if self.Bet == False:
-						element = self.driver.find_element(By.XPATH, "//*[@id='select_roulette']/div[1]/div[1]/span")
-						if element.text != "***ROLLING***" and element.text != "***ВРАЩЕНИЕ***":
-							element = self.driver.find_element(By.XPATH, "//*[@id='green_bets_my']/span")
-							if(element.text == "0"):
-								element = self.driver.find_element(By.XPATH, "//input[@type='text'][@id='roulette_amount']")
-								element.clear()
-								if self.LastBet == 0: element.send_keys(str(window.spinBox.value()))
-								else: element.send_keys(str(self.LastBet))
-
-								element = self.driver.find_element(By.XPATH, "//button[@type='button'][@name='button'][@class='green_button betButton']")
-								element.click()
-
-								element = self.driver.find_element(By.XPATH, "//*[@id='green_bets_my']/span")
-							else:
-								self.Bet = True
-								if self.LastBet == 0: self.LastBet = window.spinBox.value()
-					else:
-						element = self.driver.find_element(By.XPATH, "//*[@id='green_bets_my']/span")
-						if element.text.find("+") != -1 and self.LastBetSet == False:
-							self.LastBet = 0
-							window.Coins += window.spinBox.value()
-							self.LastBetSet = True
-							self.LooseCount = 0
-							self.WaitColor = True
-							if window.checkbox.isChecked(): window.AutoSelectColor()
-						elif element.text.find("-") != -1 and self.LastBetSet == False:
-							self.LastBet *= 2
-							self.LastBetSet = True
-							self.LooseCount += 1
-							self.WaitColor = True
-							if window.BigLoseStreak < self.LooseCount: window.BigLoseStreak = self.LooseCount
-						elif(element.text == "0"):
-							self.driver.get('https://plg.bet')
-							self.Bet = False
-							self.LastBetSet = False
-				elif window.comboBox.currentIndex() == 3: #numbers
-					if self.Bet == False:
-						element = self.driver.find_element(By.XPATH, "//*[@id='select_roulette']/div[1]/div[1]/span")
-						if (element.text.find("Вращение через") != -1 or element.text.find("Rolling in") != -1) and self.WaitRolling == True:
-							if len(self.NumberQueue) <= 0 and self.QueueBuild == False:
-								for i in range(len(window.checkbox_num)):
-									if window.checkbox_num[i].isChecked(): self.NumberQueue.append(i)
-								self.QueueBuild = True
-							elif len(self.NumberQueue) > 0:
-								if(self.NumberQueue[0] == 0):
-									element = self.driver.find_element(By.XPATH, "//input[@type='text'][@id='roulette_amount']")
-									element.clear()
-									if self.LastBet == 0: element.send_keys(str(window.spinBox.value()))
-									else: element.send_keys(str(self.LastBet))
-
-									element = self.driver.find_element(By.XPATH, "//button[@type='button'][@name='button'][@class='green_button betButton']")
-									element.click()
-
-									element = self.driver.find_element(By.XPATH, "//*[@id='green_bets_my']/span")
-									self.NumberQueue.remove(self.NumberQueue[0])
-								elif(1 <= self.NumberQueue[0] <= 7):
-									element = self.driver.find_element(By.XPATH, "//input[@type='text'][@id='roulette_amount']")
-									element.clear()
-									if self.LastBet == 0: element.send_keys(str(window.spinBox.value()))
-									else: element.send_keys(str(self.LastBet))
-
-									SubStr = "//span[@class='round_bets_item betButton'][@data-lower='"+ str(self.NumberQueue[0]) +"']"
-
-									element = self.driver.find_element(By.XPATH, SubStr)
-									element.click()
-
-									element = self.driver.find_element(By.XPATH, "//*[@id='red_bets_my']/span")
-									self.NumberQueue.remove(self.NumberQueue[0])
-								elif(8 <= self.NumberQueue[0] <= 14):
-									element = self.driver.find_element(By.XPATH, "//input[@type='text'][@id='roulette_amount']")
-									element.clear()
-									if self.LastBet == 0: element.send_keys(str(window.spinBox.value()))
-									else: element.send_keys(str(self.LastBet))
-
-									SubStr = "//span[@class='round_bets_item betButton'][@data-lower='"+ str(self.NumberQueue[0]) +"']"
-
-									element = self.driver.find_element(By.XPATH, SubStr)
-									element.click()
-
-									element = self.driver.find_element(By.XPATH, "//*[@id='black_bets_my']/span")
-									self.NumberQueue.remove(self.NumberQueue[0])
-							else:
-								self.NumberQueue = []
-								self.QueueBuild = False
-								self.Bet = True
-								if self.LastBet == 0: self.LastBet = window.spinBox.value()
-						elif (element.text == "***ROLLING***" or element.text == "***ВРАЩЕНИЕ***") and self.WaitRolling != True:
-							self.WaitRolling = True
-							self.driver.get('https://plg.bet')
-					else:
-						elementgreen = self.driver.find_element(By.XPATH, "//*[@id='green_bets_my']/span")
-						elementred = self.driver.find_element(By.XPATH, "//*[@id='red_bets_my']/span")
-						elementblack = self.driver.find_element(By.XPATH, "//*[@id='black_bets_my']/span")
-						if (elementgreen.text.find("+") != -1 or elementred.text.find("+") != -1 or elementblack.text.find("+") != -1) and self.LastBetSet == False:
-							self.LastBet = 0
-							window.Coins += window.spinBox.value()*14
-							self.LastBetSet = True
-							self.LooseCount = 0
-							self.WaitColor = True
-						elif (elementgreen.text.find("-") != -1 or elementred.text.find("-") != -1 or elementblack.text.find("-") != -1) and self.LastBetSet == False:
-							self.LastBet *= 2
-							self.LastBetSet = True
-							self.LooseCount += 1
-							self.WaitColor = True
-							if window.BigLoseStreak < self.LooseCount: window.BigLoseStreak = self.LooseCount
-						elif(elementgreen.text == "0" and elementred.text == "0" and elementblack.text == "0"):
-							self.driver.get('https://plg.bet')
-							self.Bet = False
-							self.LastBetSet = False
+				if window.InfoSet == False: window.SetInformation()
+				window.UpdateInformation(driver=self.driver)
 
 			except exceptions.NoSuchElementException:
 				window.label_3.setText(string + "\nДля запуска бота вам нужно авторизироваться")
